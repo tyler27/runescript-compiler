@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="com.obiscr.chatgpt.settings.EasyCodeState">
+    <option name="projectFiles" value="$PROJECT_DIR$/src/lexer.rs;C:/Users/Tyler/Development/runescript-compiler/src/main.rs" />
+    <option name="forceFullIndex" value="false" />
+    <option name="fileSummaryMaps" value="{&quot;C:/Users/Tyler/Development/runescript-compiler&quot;:&quot;{}&quot;}" />
+    <option name="fileSkeletonMaps" value="{&quot;C:/Users/Tyler/Development/runescript-compiler&quot;:&quot;{\&quot;/src/lexer.rs\&quot;:{\&quot;file_path\&quot;:\&quot;/src/lexer.rs\&quot;,\&quot;file_name\&quot;:\&quot;lexer.rs\&quot;,\&quot;methods\&quot;:[]},\&quot;/src/main.rs\&quot;:{\&quot;file_path\&quot;:\&quot;/src/main.rs\&quot;,\&quot;file_name\&quot;:\&quot;main.rs\&quot;,\&quot;methods\&quot;:[]}}&quot;}" />
+  </component>
+</project>

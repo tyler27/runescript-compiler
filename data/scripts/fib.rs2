@@ -1,0 +1,20 @@
+[proc,fib](int $n)(int)
+if ($n <= 2) {
+    return(1);
+}
+return(calc(~fib(calc($n - 1)) + ~fib(calc($n - 2))));
+
+[proc,fib2](int $n)(int)
+def_int $a = 1;
+def_int $b = 1;
+def_int $i = 2;
+def_int $temp = 0;
+
+while(calc($i < $n)) {
+    $temp = $b;
+    $b = calc($a + $b);
+    $a = $temp;
+    $i = calc($i + 1);
+}
+
+return($b);
