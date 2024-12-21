@@ -1,6 +1,6 @@
 # RuneScript Compiler (RSC)
 
-A compiler for RuneScript, the scripting language used in 2004Scape.
+A compiler for RuneScript
 
 ## Installation
 
