@@ -95,7 +95,3 @@ cargo test
 ## License
 
 [MIT License](LICENSE)
-
-## Sources
-
-- [JavaScript Parser in Rust](https://oxc-project.github.io/javascript-parser-in-rust/docs/lexer)
