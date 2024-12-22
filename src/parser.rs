@@ -363,7 +363,8 @@ impl Parser {
     fn parse_expression(&mut self) -> Result<AstKind, SyntaxError> {
         let mut left = self.parse_additive_expression()?;
 
-        if self.at().kind == Kind::ComparisonOperator {
+        if self.at().kind == Kind::ComparisonOperator || 
+           (self.at().kind == Kind::Equals && (self.tokens.len() > 1 && self.tokens[1].kind != Kind::RParen)) {
             let operator = self.next_token().value;
             let right = self.parse_additive_expression()?;
             

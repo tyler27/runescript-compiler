@@ -3,7 +3,8 @@ extern crate core;
 use crate::error::CompilerError;
 use crate::lexer::Lexer;
 use crate::parser::{Parser, Script, AstKind};
-use crate::evaluator::Evaluator;
+use crate::compiler::Compiler;
+use crate::vm::VM;
 use crate::config::Config;
 use std::fs;
 use std::path::PathBuf;
@@ -16,6 +17,9 @@ mod token;
 mod evaluator;
 mod analysis;
 mod config;
+mod bytecode;
+mod compiler;
+mod vm;
 
 #[derive(ClapParser)]
 #[command(author, version, about = "RuneScript Compiler")]
@@ -116,8 +120,11 @@ fn process_rs2_file(path_buf: &PathBuf) -> Result<Script, CompilerError> {
 }
 
 fn run_script(script_name: &str, args: &[i32], config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Starting script execution...");
+    
     // Load and register all scripts
-    let mut evaluator = Evaluator::new();
+    let mut compiler = Compiler::new();
+    let mut vm = VM::new();
     
     let mut found_script = false;
     let scripts = match get_rs2_files(config) {
@@ -135,16 +142,30 @@ fn run_script(script_name: &str, args: &[i32], config: &Config) -> Result<(), Bo
         Err(e) => return Err(Box::new(e)),
     };
 
+    println!("Found {} script files", scripts.len());
+
     // First pass to register scripts and check if target exists
     for path in &scripts {
+        println!("Processing script: {}", path.display());
         let script = process_rs2_file(path)?;
         for node in &script.body {
             if let AstKind::Trigger { name, .. } = node {
                 if let AstKind::Identifier(script_name_found) = &**name {
-                    evaluator.register_script(script_name_found.clone(), node.clone());
+                    println!("Compiling script: {}", script_name_found);
+                    let bytecode = compiler.compile_script(script_name_found.clone(), node);
+                    
+                    // Print bytecode instructions for debugging
                     if script_name_found.to_lowercase() == script_name.to_lowercase() {
+                        println!("\nBytecode for script '{}':", script_name_found);
+                        for (i, instruction) in bytecode.instructions.iter().enumerate() {
+                            println!("{:04}: {:?}", i, instruction);
+                        }
+                        println!();
                         found_script = true;
                     }
+                    
+                    println!("Registering script: {}", script_name_found);
+                    vm.register_script(bytecode);
                 }
             }
         }
@@ -165,10 +186,12 @@ fn run_script(script_name: &str, args: &[i32], config: &Config) -> Result<(), Bo
         return Ok(());
     }
 
-    println!("Evaluating {} with args: {:?}", script_name, args);
+    println!("\nExecuting {} with args: {:?}", script_name, args);
     // Run the specified script
-    let result = evaluator.eval_script(script_name, args);
-    println!("{}", result);
+    match vm.run_script(script_name, args) {
+        Ok(result) => println!("Result: {}", result),
+        Err(e) => println!("Error executing script: {}", e),
+    }
     Ok(())
 }
 

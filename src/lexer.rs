@@ -100,8 +100,24 @@ impl<'a> Lexer<'a> {
                     tokens.push(token);
                 },
                 '=' => {
-                    let token = self.create_token(Kind::Equals, ch.to_string());
-                    tokens.push(token);
+                    let mut is_comparison = false;
+                    for i in (0..tokens.len()).rev() {
+                        if tokens[i].kind == Kind::If || tokens[i].kind == Kind::While {
+                            is_comparison = true;
+                            break;
+                        }
+                        if tokens[i].kind == Kind::Def || tokens[i].kind == Kind::LocalVar {
+                            break;
+                        }
+                    }
+                    
+                    if is_comparison {
+                        let token = self.create_token(Kind::ComparisonOperator, ch.to_string());
+                        tokens.push(token);
+                    } else {
+                        let token = self.create_token(Kind::Equals, ch.to_string());
+                        tokens.push(token);
+                    }
                 },
                 '<' => {
                     if iter.peek() == Some(&'=') {
