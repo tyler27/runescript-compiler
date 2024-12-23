@@ -15,6 +15,7 @@ pub struct VM {
     call_stack: Vec<(usize, Option<String>)>,
     instruction_count: usize,
     max_instructions: usize,
+    memo_cache: HashMap<(String, Vec<i32>), i32>,
 }
 
 impl VM {
@@ -31,7 +32,8 @@ impl VM {
             current_script: None,
             call_stack: Vec::new(),
             instruction_count: 0,
-            max_instructions: 1000,
+            max_instructions: 10_000_000,
+            memo_cache: HashMap::new(),
         }
     }
 
@@ -40,16 +42,26 @@ impl VM {
     }
 
     pub fn run_script(&mut self, name: &str, args: &[i32]) -> Result<i32, String> {
+        // Check memo cache first
+        let cache_key = (name.to_string(), args.to_vec());
+        if let Some(&cached_result) = self.memo_cache.get(&cache_key) {
+            return Ok(cached_result);
+        }
+
         let script = self.scripts.get(name).ok_or_else(|| format!("Script '{}' not found", name))?;
         let instructions = script.instructions.clone();
         
         // Save current state
         let old_ip = self.ip;
+        let old_script = self.current_script.clone();
         let old_variables = self.variables.clone();
+        let old_stack = self.stack.clone();
         
         // Reset instruction pointer and initialize new variables
         self.ip = 0;
+        self.current_script = Some(name.to_string());
         self.variables.clear();
+        self.stack.clear();
         
         // Initialize script arguments
         for (i, &arg) in args.iter().enumerate() {
@@ -60,8 +72,8 @@ impl VM {
         // Execute instructions
         let mut result = Ok(0);
         while self.ip < instructions.len() {
-            if self.instruction_count >= 1000 {
-                result = Err("Execution exceeded maximum instruction count (1000).".to_string());
+            if self.instruction_count >= self.max_instructions {
+                result = Err(format!("Execution exceeded maximum instruction count ({}).", self.max_instructions));
                 break;
             }
             self.instruction_count += 1;
@@ -70,18 +82,57 @@ impl VM {
             self.ip += 1;  // Advance instruction pointer by default
             
             match &instructions[current_ip] {
+                Instruction::PushConstantInt(value) => {
+                    println!("Pushing constant: {}", value);
+                    self.stack.push(*value);
+                }
+                
                 Instruction::PushIntLocal(name) => {
                     let value = self.variables.get(name).copied().unwrap_or(0);
+                    println!("Pushing local {}: {}", name, value);
                     self.stack.push(value);
                 }
                 
                 Instruction::PopIntLocal(name) => {
                     let value = self.stack.pop().unwrap_or(0);
-                    self.variables.insert(name.to_string(), value);
+                    println!("Popping into local {}: {}", name, value);
+                    self.variables.insert(name.clone(), value);
                 }
                 
-                Instruction::PushConstantInt(value) => {
-                    self.stack.push(*value);
+                Instruction::Add => {
+                    let b = self.stack.pop().unwrap_or(0);
+                    let a = self.stack.pop().unwrap_or(0);
+                    match a.checked_add(b) {
+                        Some(result) => self.stack.push(result),
+                        None => {
+                            result = Err("Integer overflow".to_string());
+                            break;
+                        }
+                    }
+                }
+                
+                Instruction::Subtract => {
+                    let b = self.stack.pop().unwrap_or(0);
+                    let a = self.stack.pop().unwrap_or(0);
+                    match a.checked_sub(b) {
+                        Some(result) => self.stack.push(result),
+                        None => {
+                            result = Err("Integer overflow".to_string());
+                            break;
+                        }
+                    }
+                }
+                
+                Instruction::Multiply => {
+                    let b = self.stack.pop().unwrap_or(0);
+                    let a = self.stack.pop().unwrap_or(0);
+                    match a.checked_mul(b) {
+                        Some(result) => {
+                            println!("Multiplying {} * {} = {}", a, b, result);
+                            self.stack.push(result)
+                        },
+                        None => return Err("Integer overflow".to_string()),
+                    }
                 }
                 
                 Instruction::BranchLessThan(pos) => {
@@ -119,38 +170,88 @@ impl VM {
                     self.ip = *pos;
                 }
                 
-                Instruction::Add => {
-                    let b = self.stack.pop().unwrap_or(0);
-                    let a = self.stack.pop().unwrap_or(0);
-                    match a.checked_add(b) {
-                        Some(result) => {
-                            self.stack.push(result);
-                        }
-                        None => {
-                            result = Err("Integer overflow".to_string());
-                            break;
-                        }
-                    }
-                }
-                
-                Instruction::Subtract => {
-                    let b = self.stack.pop().unwrap_or(0);
-                    let a = self.stack.pop().unwrap_or(0);
-                    match a.checked_sub(b) {
-                        Some(result) => {
-                            self.stack.push(result);
-                        }
-                        None => {
-                            result = Err("Integer overflow".to_string());
-                            break;
-                        }
-                    }
-                }
-                
                 Instruction::GosubWithParams(script_name) => {
                     let arg = self.stack.pop().unwrap_or(0);
-                    match self.run_script(&script_name, &[arg]) {
-                        Ok(value) => self.stack.push(value),
+                    
+                    // Debug print
+                    println!("Executing {} with arg: {}", script_name, arg);
+                    
+                    // Check memo cache first
+                    let cache_key = (script_name.clone(), vec![arg]);
+                    if let Some(&cached_result) = self.memo_cache.get(&cache_key) {
+                        println!("Cache hit for {} with arg {}: result = {}", script_name, arg, cached_result);
+                        self.stack.push(cached_result);
+                        continue;
+                    }
+                    println!("Cache miss for {} with arg {}", script_name, arg);
+
+                    // Save current state
+                    let saved_ip = self.ip;
+                    let saved_script = self.current_script.clone();
+                    let saved_variables = self.variables.clone();
+                    let saved_stack = self.stack.clone();
+                    
+                    // Set up new script execution
+                    self.ip = 0;
+                    self.current_script = Some(script_name.clone());
+                    self.variables.clear();
+                    self.stack.clear();
+                    
+                    // Set up argument
+                    self.variables.insert("arg0".to_string(), arg);
+                    
+                    // Get the script
+                    let script = match self.scripts.get(script_name) {
+                        Some(script) => script,
+                        None => {
+                            result = Err(format!("Script '{}' not found", script_name));
+                            break;
+                        }
+                    };
+                    
+                    // Execute the script
+                    let mut script_result = Ok(0);
+                    let script_instructions = script.instructions.clone();
+                    while self.ip < script_instructions.len() {
+                        if self.instruction_count >= self.max_instructions {
+                            script_result = Err(format!("Execution exceeded maximum instruction count ({}).", self.max_instructions));
+                            break;
+                        }
+                        self.instruction_count += 1;
+                        
+                        let current_ip = self.ip;
+                        self.ip += 1;
+                        
+                        match &script_instructions[current_ip] {
+                            Instruction::Return => {
+                                let return_value = self.stack.pop().unwrap_or(0);
+                                script_result = Ok(return_value);
+                                break;
+                            }
+                            _ => {
+                                // Handle other instructions recursively
+                                match self.execute_instruction(&script_instructions[current_ip]) {
+                                    Ok(_) => continue,
+                                    Err(e) => {
+                                        script_result = Err(e);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Restore state
+                    self.ip = saved_ip;
+                    self.current_script = saved_script;
+                    self.variables = saved_variables;
+                    self.stack = saved_stack;
+                    
+                    match script_result {
+                        Ok(value) => {
+                            self.stack.push(value);
+                            self.memo_cache.insert(cache_key, value);
+                        }
                         Err(e) => {
                             result = Err(e);
                             break;
@@ -160,23 +261,111 @@ impl VM {
                 
                 Instruction::Return => {
                     let return_value = self.stack.pop().unwrap_or(0);
-                    println!("Result: {}", return_value);
                     result = Ok(return_value);
                     break;
                 }
                 
                 _ => {
-                    result = Err(format!("Unsupported instruction: {:?}", instructions[current_ip]));
-                    break;
+                    // For now, just ignore other instructions
+                    continue;
                 }
             }
         }
         
         // Restore previous state
         self.ip = old_ip;
+        self.current_script = old_script;
         self.variables = old_variables;
+        self.stack = old_stack;
         
         result
+    }
+
+    fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), String> {
+        match instruction {
+            Instruction::PushConstantInt(value) => {
+                println!("Pushing constant: {}", value);
+                self.stack.push(*value);
+            }
+            
+            Instruction::PushIntLocal(name) => {
+                let value = self.variables.get(name).copied().unwrap_or(0);
+                println!("Pushing local {}: {}", name, value);
+                self.stack.push(value);
+            }
+            
+            Instruction::PopIntLocal(name) => {
+                let value = self.stack.pop().unwrap_or(0);
+                println!("Popping into local {}: {}", name, value);
+                self.variables.insert(name.clone(), value);
+            }
+            
+            Instruction::Add => {
+                let b = self.stack.pop().unwrap_or(0);
+                let a = self.stack.pop().unwrap_or(0);
+                match a.checked_add(b) {
+                    Some(result) => self.stack.push(result),
+                    None => return Err("Integer overflow".to_string()),
+                }
+            }
+            
+            Instruction::Subtract => {
+                let b = self.stack.pop().unwrap_or(0);
+                let a = self.stack.pop().unwrap_or(0);
+                match a.checked_sub(b) {
+                    Some(result) => self.stack.push(result),
+                    None => return Err("Integer overflow".to_string()),
+                }
+            }
+            
+            Instruction::Multiply => {
+                let b = self.stack.pop().unwrap_or(0);
+                let a = self.stack.pop().unwrap_or(0);
+                println!("Multiplying {} * {} = {}", a, b, a * b);
+                self.stack.push(a * b);
+            }
+            
+            Instruction::BranchLessThan(pos) => {
+                let b = self.stack.pop().unwrap_or(0);
+                let a = self.stack.pop().unwrap_or(0);
+                if a < b {
+                    self.ip = *pos;
+                }
+            }
+            
+            Instruction::BranchLessThanOrEquals(pos) => {
+                let b = self.stack.pop().unwrap_or(0);
+                let a = self.stack.pop().unwrap_or(0);
+                if a <= b {
+                    self.ip = *pos;
+                }
+            }
+            
+            Instruction::BranchEquals(pos) => {
+                let b = self.stack.pop().unwrap_or(0);
+                let a = self.stack.pop().unwrap_or(0);
+                if a == b {
+                    self.ip = *pos;
+                }
+            }
+            
+            Instruction::BranchNot(pos) => {
+                let value = self.stack.pop().unwrap_or(0);
+                if value == 0 {
+                    self.ip = *pos;
+                }
+            }
+            
+            Instruction::Jump(pos) => {
+                self.ip = *pos;
+            }
+            
+            _ => {
+                // For now, just ignore other instructions
+            }
+        }
+        
+        Ok(())
     }
 
     fn call_script(&mut self, script_name: &str) -> Result<(), String> {

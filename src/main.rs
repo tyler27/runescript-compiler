@@ -20,6 +20,7 @@ mod config;
 mod bytecode;
 mod compiler;
 mod vm;
+mod types;
 
 #[derive(ClapParser)]
 #[command(author, version, about = "RuneScript Compiler")]

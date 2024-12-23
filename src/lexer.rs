@@ -141,9 +141,80 @@ impl<'a> Lexer<'a> {
                         tokens.push(token);
                     }
                 },
-                '+' | '-' | '*' | '/' => {
+                '+' | '-' | '*' => {
                     let token = self.create_token(Kind::BinaryOperator, ch.to_string());
                     tokens.push(token);
+                },
+                '/' => {
+                    if let Some(next_char) = iter.peek() {
+                        match next_char {
+                            '/' => {
+                                // Single-line comment
+                                iter.next(); // consume the second '/'
+                                self.position += 1;
+                                let comment: String = iter.by_ref()
+                                    .take_while(|&c| c != '\n')
+                                    .collect();
+                                self.position += comment.len();
+                                let token = self.create_token(Kind::SingleLineComment, comment);
+                                tokens.push(token);
+                                continue;
+                            },
+                            '*' => {
+                                // Multi-line comment
+                                iter.next(); // consume the '*'
+                                self.position += 1;
+                                let mut comment = String::new();
+                                let mut depth = 1;
+                                let mut prev_char = '\0';
+                                
+                                while depth > 0 {
+                                    match iter.next() {
+                                        Some(c) => {
+                                            self.position += 1;
+                                            if c == '\n' {
+                                                self.line += 1;
+                                                self.position = 0;
+                                            }
+                                            
+                                            if prev_char == '/' && c == '*' {
+                                                depth += 1;
+                                            } else if prev_char == '*' && c == '/' {
+                                                depth -= 1;
+                                                if depth == 0 {
+                                                    // Remove the last '*' from the comment
+                                                    comment.pop();
+                                                    break;
+                                                }
+                                            }
+                                            
+                                            comment.push(c);
+                                            prev_char = c;
+                                        },
+                                        None => {
+                                            return Err(LexingError::new(
+                                                self.file_name.clone(),
+                                                "Unterminated multi-line comment".to_string(),
+                                                self.line,
+                                                self.position
+                                            ));
+                                        }
+                                    }
+                                }
+                                
+                                let token = self.create_token(Kind::MultiLineComment, comment);
+                                tokens.push(token);
+                                continue;
+                            },
+                            _ => {
+                                let token = self.create_token(Kind::BinaryOperator, ch.to_string());
+                                tokens.push(token);
+                            }
+                        }
+                    } else {
+                        let token = self.create_token(Kind::BinaryOperator, ch.to_string());
+                        tokens.push(token);
+                    }
                 },
                 ';' => {
                     let token = self.create_token(Kind::Semicolon, ch.to_string());

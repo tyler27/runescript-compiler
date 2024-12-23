@@ -1,6 +1,12 @@
 use crate::error::SyntaxError;
-use crate::token::{Kind, Token, Type};
+use crate::token::{Kind, Token};
+use crate::types::Type;
 use std::path::PathBuf;
+
+#[derive(Debug, Clone)]
+pub struct Script {
+    pub body: Vec<AstKind>,
+}
 
 #[derive(Debug, Clone)]
 pub enum AstKind {
@@ -60,11 +66,6 @@ pub enum AstKind {
     },
 }
 
-#[derive(Debug, Clone)]
-pub struct Script {
-    pub body: Vec<AstKind>,
-}
-
 pub struct Parser {
     tokens: Vec<Token>,
     file_path: PathBuf,
@@ -79,11 +80,28 @@ impl Parser {
     }
 
     fn at(&self) -> &Token {
-        self.tokens.first().unwrap()
+        let mut index = 0;
+        while index < self.tokens.len() {
+            match self.tokens[index].kind {
+                Kind::SingleLineComment | Kind::MultiLineComment => {
+                    index += 1;
+                    continue;
+                }
+                _ => return &self.tokens[index],
+            }
+        }
+        &self.tokens[0]  // Return first token if no non-comment tokens found
     }
 
     fn next_token(&mut self) -> Token {
-        self.tokens.remove(0)
+        while !self.tokens.is_empty() {
+            let token = self.tokens.remove(0);
+            match token.kind {
+                Kind::SingleLineComment | Kind::MultiLineComment => continue,
+                _ => return token,
+            }
+        }
+        self.tokens[0].clone()  // Return first token if no non-comment tokens found
     }
 
     pub(crate) fn parse(&mut self) -> Result<Script, SyntaxError> {
