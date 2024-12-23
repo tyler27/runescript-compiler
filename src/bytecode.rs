@@ -38,6 +38,7 @@ pub enum Instruction {
     DefineArray(String, usize) = 44, // Define an array with size
     PushArrayInt(String) = 45,  // Push array element
     PopArrayInt(String) = 46,   // Pop and store to array element
+    Abs = 47,                   // Absolute value of top stack value
 }
 
 #[derive(Debug, Clone)]

@@ -38,6 +38,13 @@ enum Commands {
         /// Arguments to pass to the script
         args: Vec<i32>,
     },
+    /// Run AOC script with data file
+    Aoc {
+        /// Name of the script to run (without .rs2 extension)
+        script_name: String,
+        /// Path to data file relative to scripts directory
+        data_file: String,
+    },
     /// Analyze the 2004Scape codebase
     #[command(name = "2004")]
     Analyze2004,
@@ -196,6 +203,100 @@ fn run_script(script_name: &str, args: &[i32], config: &Config) -> Result<(), Bo
     Ok(())
 }
 
+fn run_aoc(script_name: &str, data_file: &str, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Starting AOC script execution...");
+    
+    // Load and register all scripts
+    let mut compiler = Compiler::new();
+    let mut vm = VM::new();
+    
+    // Load scripts
+    let scripts = match get_rs2_files(config) {
+        Ok(scripts) => scripts,
+        Err(CompilerError::FileNotFound(msg)) => {
+            println!("Error: {}", msg);
+            return Ok(());
+        }
+        Err(e) => return Err(Box::new(e)),
+    };
+
+    // First pass to register scripts
+    let mut found_script = false;
+    for path in &scripts {
+        let script = process_rs2_file(path)?;
+        for node in &script.body {
+            if let AstKind::Trigger { name, .. } = node {
+                if let AstKind::Identifier(script_name_found) = &**name {
+                    let bytecode = compiler.compile_script(script_name_found.clone(), node);
+                    if script_name_found.to_lowercase() == script_name.to_lowercase() {
+                        found_script = true;
+                    }
+                    vm.register_script(bytecode);
+                }
+            }
+        }
+    }
+
+    if !found_script {
+        println!("Error: Script '{}' not found", script_name);
+        return Ok(());
+    }
+
+    // Read and process data file
+    let data_path = PathBuf::from(data_file);
+    let data_content = fs::read_to_string(&data_path).map_err(|e| {
+        CompilerError::FileNotFound(format!(
+            "Cannot read data file: {}\nError: {}",
+            data_path.display(), e
+        ))
+    })?;
+
+    // Process data into two separate lists
+    let mut left_list = Vec::new();
+    let mut right_list = Vec::new();
+
+    for line in data_content.lines() {
+        let numbers: Vec<i32> = line
+            .split_whitespace()
+            .filter_map(|s| s.parse().ok())
+            .collect();
+
+        if numbers.len() == 2 {
+            left_list.push(numbers[0]);
+            right_list.push(numbers[1]);
+        } else {
+            println!("Warning: Invalid line format: {}", line);
+        }
+    }
+
+    // Sort both lists
+    left_list.sort();
+    right_list.sort();
+
+    // Calculate distances between sorted pairs
+    let mut total_distance = 0;
+    let mut line_count = 0;
+
+    for (left, right) in left_list.iter().zip(right_list.iter()) {
+        match vm.run_script(script_name, &[*left, *right]) {
+            Ok(result) => {
+                total_distance += result;
+                line_count += 1;
+                println!("Pair {}: {} {} -> {}", line_count, left, right, result);
+            }
+            Err(e) => println!("Error processing pair {}: {}", line_count + 1, e),
+        }
+    }
+
+    println!("\nProcessed {} pairs", line_count);
+    println!("Total distance: {}", total_distance);
+    if line_count > 0 {
+        println!("Average distance: {}", total_distance / line_count);
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let config = Config::load();
@@ -203,6 +304,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Commands::Run { script_name, args } => {
             run_script(&script_name, &args, &config)?;
+        }
+        Commands::Aoc { script_name, data_file } => {
+            run_aoc(&script_name, &data_file, &config)?;
         }
         Commands::Analyze2004 => {
             println!("Analyzing 2004Scape codebase...");

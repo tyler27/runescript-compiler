@@ -261,7 +261,7 @@ impl Compiler {
                     // Count recursive calls
                     fn count_recursive_calls(node: &AstKind, script_name: &str) -> i32 {
                         match node {
-                            AstKind::ScriptCall { script, arguments: _ } => {
+                            AstKind::ScriptCall { script, .. } => {
                                 if let AstKind::Identifier(name) = &**script {
                                     if name == script_name {
                                         return 1;
@@ -282,19 +282,68 @@ impl Compiler {
                     let recursive_calls = count_recursive_calls(expr, &current_script);
                     println!("Found {} recursive call(s) in expression", recursive_calls);
 
+                    // Check for nested recursion
+                    fn has_nested_recursion(node: &AstKind, script_name: &str) -> bool {
+                        match node {
+                            AstKind::ScriptCall { script, arguments } => {
+                                if let AstKind::Identifier(name) = &**script {
+                                    if name == script_name {
+                                        // Check if any argument contains a recursive call
+                                        arguments.iter().any(|arg| has_nested_recursion(arg, script_name))
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    false
+                                }
+                            },
+                            AstKind::FunctionCall { arguments, .. } => {
+                                arguments.iter().any(|arg| has_nested_recursion(arg, script_name))
+                            },
+                            AstKind::BinaryExpression { lhs, rhs, .. } => {
+                                has_nested_recursion(lhs, script_name) || has_nested_recursion(rhs, script_name)
+                            },
+                            _ => false,
+                        }
+                    }
+
+                    if has_nested_recursion(expr, &current_script) {
+                        println!("Found nested recursion pattern, skipping transformation");
+                        return node.clone();
+                    }
+
                     match recursive_calls {
                         1 => {
                             println!("Analyzing single recursive call pattern...");
                             println!("Analyzing recursive pattern to determine initial value...");
+                            
+                            // Extract base case return value
+                            let base_case_value = if let Some(base_case) = base_cases.first() {
+                                if let AstKind::If { return_statement, .. } = base_case {
+                                    if let AstKind::Return(expr) = &**return_statement {
+                                        if let AstKind::NumericLiteral(n) = &**expr {
+                                            *n
+                                        } else {
+                                            0
+                                        }
+                                    } else {
+                                        0
+                                    }
+                                } else {
+                                    0
+                                }
+                            } else {
+                                0
+                            };
                             
                             // Single recursive call (factorial, power, sum_to_n)
                             println!("Initializing result variable for single recursion...");
                             new_statements.push(AstKind::Define {
                                 name: "result".to_string(),
                                 var_type: Type::Int,
-                                value: Box::new(AstKind::NumericLiteral(1)),
+                                value: Box::new(AstKind::NumericLiteral(base_case_value)),
                             });
-                            println!("Initialized result variable with 1");
+                            println!("Initialized result variable with base case value: {}", base_case_value);
 
                             new_statements.push(AstKind::Define {
                                 name: "i".to_string(),
@@ -783,6 +832,12 @@ impl Compiler {
                                 println!("Non-binary expression in calc(): {:?}", arg);
                                 self.compile_node(arg, bytecode);
                             }
+                        }
+                    }
+                    "abs" => {
+                        if let Some(arg) = arguments.first() {
+                            self.compile_node(arg, bytecode);
+                            bytecode.push(Instruction::Abs);
                         }
                     }
                     _ => panic!("Unknown function: {}", name),

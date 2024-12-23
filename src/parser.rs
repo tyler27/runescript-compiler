@@ -452,6 +452,14 @@ impl Parser {
                         name: "calc".to_string(),
                         arguments: vec![Box::new(expr)],
                     })
+                } else if token.value == "abs" {
+                    self.eat(Kind::LParen)?;
+                    let expr = self.parse_additive_expression()?;
+                    self.eat(Kind::RParen)?;
+                    Ok(AstKind::FunctionCall {
+                        name: "abs".to_string(),
+                        arguments: vec![Box::new(expr)],
+                    })
                 } else {
                     Ok(AstKind::Identifier(token.value))
                 }

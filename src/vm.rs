@@ -147,6 +147,13 @@ impl VM {
                     }
                 }
                 
+                Instruction::Abs => {
+                    let value = self.stack.pop().unwrap_or(0);
+                    let result = if value < 0 { -value } else { value };
+                    println!("Abs {} = {}", value, result);
+                    self.stack.push(result);
+                }
+                
                 Instruction::BranchGreaterThan(pos) => {
                     let b = self.stack.pop().unwrap_or(0);
                     let a = self.stack.pop().unwrap_or(0);
@@ -386,6 +393,13 @@ impl VM {
                 let a = self.stack.pop().unwrap_or(0);
                 println!("Multiplying {} * {} = {}", a, b, a * b);
                 self.stack.push(a * b);
+            }
+            
+            Instruction::Abs => {
+                let value = self.stack.pop().unwrap_or(0);
+                let result = if value < 0 { -value } else { value };
+                println!("Abs {} = {}", value, result);
+                self.stack.push(result);
             }
             
             Instruction::BranchGreaterThan(pos) => {

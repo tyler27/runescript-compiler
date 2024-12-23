@@ -29,7 +29,7 @@ return(~factorial_tail_helper(calc($n - 1), calc($n * $acc)));
 
 // Single recursion - sum to n
 [proc,sum_to_n](int $n)(int)
-if ($n <= 0) {
+if ($n = 0) {
     return(0);
 }
 return(calc($n + ~sum_to_n(calc($n - 1))));
