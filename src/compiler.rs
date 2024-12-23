@@ -141,6 +141,123 @@ impl Compiler {
 
                 // Analyze recursive expression
                 if let Some(expr) = &recursive_expr {
+                    // Check if this is a tail recursive function
+                    let is_tail_recursive = match &**expr {
+                        AstKind::ScriptCall { script, arguments } => {
+                            if let AstKind::Identifier(name) = &**script {
+                                println!("Analyzing potential tail recursive call to: {}", name);
+                                println!("Current script: {}", current_script);
+                                println!("Number of arguments: {}", arguments.len());
+                                
+                                let is_tail = name == &current_script && arguments.len() == 2;
+                                if is_tail {
+                                    println!("Found tail recursive call with accumulator");
+                                    println!("Arguments:");
+                                    for (i, arg) in arguments.iter().enumerate() {
+                                        println!("  Arg {}: {:?}", i, arg);
+                                    }
+                                } else {
+                                    println!("Not a tail recursive call because:");
+                                    if name != &current_script {
+                                        println!("  - Call is to different function: {} != {}", name, current_script);
+                                    }
+                                    if arguments.len() != 2 {
+                                        println!("  - Wrong number of arguments: {} (expected 2)", arguments.len());
+                                    }
+                                }
+                                is_tail
+                            } else {
+                                println!("Not a tail recursive call - script is not an identifier");
+                                false
+                            }
+                        },
+                        _ => {
+                            println!("Not a tail recursive call - expression is not a script call");
+                            false
+                        }
+                    };
+
+                    if is_tail_recursive {
+                        println!("Found tail recursive pattern");
+                        println!("Transforming to iterative form with accumulator...");
+                        let mut new_statements = Vec::new();
+
+                        // Initialize n with first argument
+                        println!("Initializing n with first argument (arg0)");
+                        new_statements.push(AstKind::Define {
+                            name: "n".to_string(),
+                            var_type: Type::Int,
+                            value: Box::new(AstKind::LocalVar("arg0".to_string())),
+                        });
+
+                        // Initialize acc with second argument
+                        println!("Initializing acc with second argument (arg1/accumulator)");
+                        new_statements.push(AstKind::Define {
+                            name: "acc".to_string(),
+                            var_type: Type::Int,
+                            value: Box::new(AstKind::LocalVar("arg1".to_string())),
+                        });
+
+                        // Add base case check
+                        println!("Adding base case check for n <= 1");
+                        new_statements.push(AstKind::If {
+                            expression: Box::new(AstKind::BinaryExpression {
+                                lhs: Box::new(AstKind::LocalVar("n".to_string())),
+                                rhs: Box::new(AstKind::NumericLiteral(1)),
+                                operator: "<=".to_string(),
+                            }),
+                            value: Box::new(AstKind::LocalVar("acc".to_string())),
+                            return_statement: Box::new(AstKind::Return(Box::new(AstKind::LocalVar("acc".to_string())))),
+                        });
+
+                        // Create while loop condition: while n > 1
+                        let loop_condition = AstKind::BinaryExpression {
+                            lhs: Box::new(AstKind::LocalVar("n".to_string())),
+                            rhs: Box::new(AstKind::NumericLiteral(1)),
+                            operator: ">".to_string(),
+                        };
+
+                        let mut loop_body = Vec::new();
+
+                        // Update accumulator: acc = n * acc
+                        loop_body.push(AstKind::Assignment {
+                            target: Box::new(AstKind::LocalVar("acc".to_string())),
+                            value: Box::new(AstKind::FunctionCall {
+                                name: "calc".to_string(),
+                                arguments: vec![Box::new(AstKind::BinaryExpression {
+                                    lhs: Box::new(AstKind::LocalVar("n".to_string())),
+                                    rhs: Box::new(AstKind::LocalVar("acc".to_string())),
+                                    operator: "*".to_string(),
+                                })],
+                            }),
+                        });
+
+                        // Decrement n: n = n - 1
+                        loop_body.push(AstKind::Assignment {
+                            target: Box::new(AstKind::LocalVar("n".to_string())),
+                            value: Box::new(AstKind::FunctionCall {
+                                name: "calc".to_string(),
+                                arguments: vec![Box::new(AstKind::BinaryExpression {
+                                    lhs: Box::new(AstKind::LocalVar("n".to_string())),
+                                    rhs: Box::new(AstKind::NumericLiteral(1)),
+                                    operator: "-".to_string(),
+                                })],
+                            }),
+                        });
+
+                        // Add the while loop
+                        new_statements.push(AstKind::While {
+                            condition: Box::new(loop_condition),
+                            body: Box::new(AstKind::Block(loop_body)),
+                        });
+
+                        // Return final accumulator value
+                        new_statements.push(AstKind::Return(Box::new(AstKind::LocalVar("acc".to_string()))));
+
+                        println!("Tail recursion transformation complete");
+                        return AstKind::Block(new_statements);
+                    }
+
                     // Count recursive calls
                     fn count_recursive_calls(node: &AstKind, script_name: &str) -> i32 {
                         match node {
@@ -316,25 +433,25 @@ impl Compiler {
                             new_statements.push(AstKind::Define {
                                 name: "prev".to_string(),
                                 var_type: Type::Int,
-                                value: Box::new(AstKind::NumericLiteral(1)),  // Start with fib(1)
+                                value: Box::new(AstKind::NumericLiteral(0)),  // Start with fib(0)
                             });
 
                             new_statements.push(AstKind::Define {
                                 name: "curr".to_string(),
                                 var_type: Type::Int,
-                                value: Box::new(AstKind::NumericLiteral(1)),  // Start with fib(2)
+                                value: Box::new(AstKind::NumericLiteral(1)),  // Start with fib(1)
                             });
 
                             new_statements.push(AstKind::Define {
                                 name: "next".to_string(),
                                 var_type: Type::Int,
-                                value: Box::new(AstKind::NumericLiteral(2)),  // Will be calculated
+                                value: Box::new(AstKind::NumericLiteral(1)),  // Will be calculated
                             });
 
                             new_statements.push(AstKind::Define {
                                 name: "i".to_string(),
                                 var_type: Type::Int,
-                                value: Box::new(AstKind::NumericLiteral(3)),  // Start from 3 since we handle 0,1,2 in base cases
+                                value: Box::new(AstKind::NumericLiteral(2)),  // Start from 2 since we handle 0,1 in base cases
                             });
 
                             // Create the loop
@@ -528,51 +645,46 @@ impl Compiler {
             }
             
             AstKind::BinaryExpression { lhs, rhs, operator } => {
+                // Compile left and right operands
+                self.compile_node(lhs, bytecode);
+                self.compile_node(rhs, bytecode);
+                
+                // Add appropriate comparison instruction
                 match operator.as_str() {
-                    // Comparison operators can be used directly
-                    "<=" | ">=" | "<" | ">" | "=" => {
-                        self.compile_node(lhs, bytecode);
-                        self.compile_node(rhs, bytecode);
-                        match operator.as_str() {
-                            "<=" => {
-                                bytecode.push(Instruction::BranchLessThanOrEquals(bytecode.instructions.len() + 3));
-                                bytecode.push(Instruction::PushConstantInt(0));
-                                bytecode.push(Instruction::Jump(bytecode.instructions.len() + 2));
-                                bytecode.push(Instruction::PushConstantInt(1));
-                            },
-                            "<" => {
-                                bytecode.push(Instruction::BranchLessThan(bytecode.instructions.len() + 3));
-                                bytecode.push(Instruction::PushConstantInt(0));
-                                bytecode.push(Instruction::Jump(bytecode.instructions.len() + 2));
-                                bytecode.push(Instruction::PushConstantInt(1));
-                            },
-                            ">" => {
-                                bytecode.push(Instruction::BranchGreaterThan(bytecode.instructions.len() + 3));
-                                bytecode.push(Instruction::PushConstantInt(0));
-                                bytecode.push(Instruction::Jump(bytecode.instructions.len() + 2));
-                                bytecode.push(Instruction::PushConstantInt(1));
-                            },
-                            ">=" => {
-                                bytecode.push(Instruction::BranchGreaterThanOrEquals(bytecode.instructions.len() + 3));
-                                bytecode.push(Instruction::PushConstantInt(0));
-                                bytecode.push(Instruction::Jump(bytecode.instructions.len() + 2));
-                                bytecode.push(Instruction::PushConstantInt(1));
-                            },
-                            "=" => {
-                                bytecode.push(Instruction::BranchEquals(bytecode.instructions.len() + 3));
-                                bytecode.push(Instruction::PushConstantInt(0));
-                                bytecode.push(Instruction::Jump(bytecode.instructions.len() + 2));
-                                bytecode.push(Instruction::PushConstantInt(1));
-                            },
-                            _ => unreachable!(),
-                        }
+                    "=" => {
+                        bytecode.push(Instruction::BranchEquals(bytecode.instructions.len() + 3));
+                        bytecode.push(Instruction::PushConstantInt(0));
+                        bytecode.push(Instruction::Jump(bytecode.instructions.len() + 2));
+                        bytecode.push(Instruction::PushConstantInt(1));
                     },
-                    // Arithmetic operators must be inside calc()
-                    "+" | "-" | "*" | "/" => {
-                        println!("Found arithmetic operator {} outside calc()", operator);
-                        panic!("Arithmetic expressions must be inside calc() function");
+                    "<" => {
+                        bytecode.push(Instruction::BranchLessThan(bytecode.instructions.len() + 3));
+                        bytecode.push(Instruction::PushConstantInt(0));
+                        bytecode.push(Instruction::Jump(bytecode.instructions.len() + 2));
+                        bytecode.push(Instruction::PushConstantInt(1));
                     },
-                    _ => panic!("Unknown operator: {}", operator),
+                    "<=" => {
+                        bytecode.push(Instruction::BranchLessThanOrEquals(bytecode.instructions.len() + 3));
+                        bytecode.push(Instruction::PushConstantInt(0));
+                        bytecode.push(Instruction::Jump(bytecode.instructions.len() + 2));
+                        bytecode.push(Instruction::PushConstantInt(1));
+                    },
+                    ">" => {
+                        bytecode.push(Instruction::BranchGreaterThan(bytecode.instructions.len() + 3));
+                        bytecode.push(Instruction::PushConstantInt(0));
+                        bytecode.push(Instruction::Jump(bytecode.instructions.len() + 2));
+                        bytecode.push(Instruction::PushConstantInt(1));
+                    },
+                    ">=" => {
+                        bytecode.push(Instruction::BranchGreaterThanOrEquals(bytecode.instructions.len() + 3));
+                        bytecode.push(Instruction::PushConstantInt(0));
+                        bytecode.push(Instruction::Jump(bytecode.instructions.len() + 2));
+                        bytecode.push(Instruction::PushConstantInt(1));
+                    },
+                    "+" => bytecode.push(Instruction::Add),
+                    "-" => bytecode.push(Instruction::Subtract),
+                    "*" => bytecode.push(Instruction::Multiply),
+                    _ => panic!("Unsupported operator: {}", operator),
                 }
             }
             
@@ -678,17 +790,19 @@ impl Compiler {
             }
             
             AstKind::ScriptCall { script, arguments } => {
-                // Push all arguments onto the stack
+                // First compile the arguments in order
                 for arg in arguments {
                     self.compile_node(arg, bytecode);
                 }
                 
+                // Push the number of arguments
+                bytecode.push(Instruction::PushConstantInt(arguments.len() as i32));
+                
+                // Then add the script call instruction
                 if let AstKind::Identifier(script_name) = &**script {
-                    if arguments.is_empty() {
-                        bytecode.push(Instruction::Gosub(script_name.clone()));
-                    } else {
-                        bytecode.push(Instruction::GosubWithParams(script_name.clone()));
-                    }
+                    bytecode.push(Instruction::GosubWithParams(script_name.clone()));
+                } else {
+                    panic!("Script call target must be an identifier");
                 }
             }
             

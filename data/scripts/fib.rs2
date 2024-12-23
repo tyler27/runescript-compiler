@@ -2,53 +2,96 @@
 if ($n = 0) {
     return(0);
 }
-if ($n <= 2) {
-    return(1);
-}
-return(calc(~fib(calc($n - 1)) + ~fib(calc($n - 2))));
-/*
-
-[proc,fib2](int $n)(int)
 if ($n = 1) {
-    return(0);
+    return(1);
 }
 if ($n = 2) {
     return(1);
 }
-def_int $a = 0;
-def_int $b = 1;
-def_int $c;
+return(calc(~fib(calc($n - 1)) + ~fib(calc($n - 2))));
 
-def_int $count = 2;
-while ($count <= $n) {
-    $c = calc($a + $b);
-    $a = $b;
-    $b = $c;
-    $count = calc($count + 1);
-}
-return($c);
-
-[proc,add](int $n, int $n2)(int)
-return(calc($n + $n2));
-
+// Single recursion - factorial
 [proc,factorial](int $n)(int)
 if ($n <= 1) {
     return(1);
 }
 return(calc($n * ~factorial(calc($n - 1))));
 
-[proc,power](int $base, int $exp)(int)
-if ($exp = 0) {
-    return(1);
-}
-if ($exp = 1) {
-    return($base);
-}
-return(calc($base * ~power($base, calc($exp - 1))));
+// Tail recursion - factorial with accumulator
+[proc,factorial_tail](int $n)(int)
+return(~factorial_tail_helper($n, 1));
 
+[proc,factorial_tail_helper](int $n, int $acc)(int)
+if ($n <= 1) {
+    return($acc);
+}
+return(~factorial_tail_helper(calc($n - 1), calc($n * $acc)));
+
+// Single recursion - sum to n
 [proc,sum_to_n](int $n)(int)
 if ($n <= 0) {
     return(0);
 }
 return(calc($n + ~sum_to_n(calc($n - 1))));
-*/
+
+// Double recursion - Ackermann function
+[proc,ackermann](int $m, int $n)(int)
+if ($m = 0) {
+    return(calc($n + 1));
+}
+if ($n = 0) {
+    return(~ackermann(calc($m - 1), 1));
+}
+return(~ackermann(calc($m - 1), ~ackermann($m, calc($n - 1))));
+
+// Mutual recursion - even/odd
+[proc,is_even](int $n)(int)
+if ($n = 0) {
+    return(1);
+}
+if ($n = 1) {
+    return(0);
+}
+return(~is_even(calc($n - 2)));
+
+[proc,is_odd](int $n)(int)
+if ($n = 0) {
+    return(0);
+}
+if ($n = 1) {
+    return(1);
+}
+return(~is_odd(calc($n - 2)));
+
+// Nested recursion - McCarthy 91 function
+[proc,mccarthy91](int $n)(int)
+if ($n > 100) {
+    return(calc($n - 10));
+}
+return(~mccarthy91(~mccarthy91(calc($n + 11))));
+
+// Indirect recursion through multiple functions
+[proc,ping](int $n)(int)
+if ($n <= 0) {
+    return(0);
+}
+return(calc(1 + ~pong(calc($n - 1))));
+
+[proc,pong](int $n)(int)
+if ($n <= 0) {
+    return(0);
+}
+return(calc(1 + ~ping(calc($n - 1))));
+
+// Tree recursion - count binary trees
+[proc,count_trees](int $n)(int)
+if ($n <= 1) {
+    return(1);
+}
+def_int $sum = 0;
+def_int $i = 0;
+while ($i < $n) {
+    $sum = calc($sum + calc(~count_trees($i) * ~count_trees(calc($n - calc(1 + $i)))));
+    $i = calc($i + 1);
+}
+return($sum);
