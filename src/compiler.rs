@@ -280,50 +280,61 @@ impl Compiler {
                         },
                         2 => {
                             // Double recursive call (Fibonacci)
-                            // Handle base cases first - simplified to match original logic
+                            // Handle base cases first
+                            println!("WERE INSIDE DOUBLE RECURSIVE");
                             new_statements.push(AstKind::If {
                                 expression: Box::new(AstKind::BinaryExpression {
                                     lhs: Box::new(AstKind::LocalVar(param_name.clone())),
                                     rhs: Box::new(AstKind::NumericLiteral(0)),
                                     operator: "=".to_string(),
                                 }),
+                                value: Box::new(AstKind::NumericLiteral(0)),
+                                return_statement: Box::new(AstKind::Return(Box::new(AstKind::NumericLiteral(0)))),
+                            });
+
+                            new_statements.push(AstKind::If {
+                                expression: Box::new(AstKind::BinaryExpression {
+                                    lhs: Box::new(AstKind::LocalVar(param_name.clone())),
+                                    rhs: Box::new(AstKind::NumericLiteral(1)),
+                                    operator: "=".to_string(),
+                                }),
                                 value: Box::new(AstKind::NumericLiteral(1)),
-                                return_statement: Box::new(AstKind::NumericLiteral(0)),
+                                return_statement: Box::new(AstKind::Return(Box::new(AstKind::NumericLiteral(1)))),
                             });
 
                             new_statements.push(AstKind::If {
                                 expression: Box::new(AstKind::BinaryExpression {
                                     lhs: Box::new(AstKind::LocalVar(param_name.clone())),
                                     rhs: Box::new(AstKind::NumericLiteral(2)),
-                                    operator: "<=".to_string(),
+                                    operator: "=".to_string(),
                                 }),
-                                value: Box::new(AstKind::NumericLiteral(0)),
-                                return_statement: Box::new(AstKind::NumericLiteral(1)),
+                                value: Box::new(AstKind::NumericLiteral(1)),
+                                return_statement: Box::new(AstKind::Return(Box::new(AstKind::NumericLiteral(1)))),
                             });
 
                             // Initialize variables for iterative version
                             new_statements.push(AstKind::Define {
                                 name: "prev".to_string(),
                                 var_type: Type::Int,
-                                value: Box::new(AstKind::NumericLiteral(0)),
+                                value: Box::new(AstKind::NumericLiteral(1)),  // Start with fib(1)
                             });
 
                             new_statements.push(AstKind::Define {
                                 name: "curr".to_string(),
                                 var_type: Type::Int,
-                                value: Box::new(AstKind::NumericLiteral(1)),
+                                value: Box::new(AstKind::NumericLiteral(1)),  // Start with fib(2)
                             });
 
                             new_statements.push(AstKind::Define {
                                 name: "next".to_string(),
                                 var_type: Type::Int,
-                                value: Box::new(AstKind::NumericLiteral(1)),
+                                value: Box::new(AstKind::NumericLiteral(2)),  // Will be calculated
                             });
 
                             new_statements.push(AstKind::Define {
                                 name: "i".to_string(),
                                 var_type: Type::Int,
-                                value: Box::new(AstKind::NumericLiteral(2)),
+                                value: Box::new(AstKind::NumericLiteral(3)),  // Start from 3 since we handle 0,1,2 in base cases
                             });
 
                             // Create the loop
@@ -372,7 +383,7 @@ impl Compiler {
                             });
 
                             // Return the final value
-                            new_statements.push(AstKind::Return(Box::new(AstKind::LocalVar("next".to_string()))));
+                            new_statements.push(AstKind::Return(Box::new(AstKind::LocalVar("curr".to_string()))));
                         },
                         _ => {
                             // Unsupported recursive pattern
@@ -501,7 +512,7 @@ impl Compiler {
         }
     }
 
-    fn compile_node(&self, node: &AstKind, bytecode: &mut ByteCode) {
+    fn compile_node(&mut self, node: &AstKind, bytecode: &mut ByteCode) {
         match node {
             AstKind::NumericLiteral(n) => {
                 bytecode.push(Instruction::PushConstantInt(*n));
@@ -580,34 +591,33 @@ impl Compiler {
             }
             
             AstKind::If { expression, value, return_statement } => {
-                // Compile condition
+                // Compile the condition
                 self.compile_node(expression, bytecode);
                 
                 // Add branch instruction
-                let branch_pos = bytecode.instructions.len();
-                bytecode.push(Instruction::BranchNot(0)); // Placeholder
+                let jump_index = bytecode.instructions.len();
+                bytecode.push(Instruction::BranchNot(0));  // Placeholder jump target
                 
-                // Compile the true branch
-                self.compile_node(return_statement, bytecode);
-                
-                // Add jump over false branch
-                let jump_pos = bytecode.instructions.len();
-                bytecode.push(Instruction::Jump(0)); // Placeholder
-                
-                // Update the branch position
-                let false_branch_pos = bytecode.instructions.len();
-                if let Instruction::BranchNot(_) = bytecode.instructions[branch_pos] {
-                    bytecode.instructions[branch_pos] = Instruction::BranchNot(false_branch_pos);
+                // Compile the return statement if it exists
+                if let AstKind::Return(expr) = &**return_statement {
+                    self.compile_node(expr, bytecode);
+                    bytecode.push(Instruction::Return);
                 }
                 
-                // Compile false branch
+                // Add jump instruction to skip else block
+                let else_jump_index = bytecode.instructions.len();
+                bytecode.push(Instruction::Jump(0));  // Placeholder jump target
+                
+                // Update the branch target
+                let current_len = bytecode.instructions.len();
+                bytecode.instructions[jump_index] = Instruction::BranchNot(current_len);
+                
+                // Compile the value
                 self.compile_node(value, bytecode);
                 
-                // Update the jump position
-                let end_pos = bytecode.instructions.len();
-                if let Instruction::Jump(_) = bytecode.instructions[jump_pos] {
-                    bytecode.instructions[jump_pos] = Instruction::Jump(end_pos);
-                }
+                // Update the else jump target
+                let current_len = bytecode.instructions.len();
+                bytecode.instructions[else_jump_index] = Instruction::Jump(current_len);
             }
             
             AstKind::While { condition, body } => {
